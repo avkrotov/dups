@@ -17,6 +17,8 @@ struct File {
 	File *next;
 	char *name;
 	int fd;
+	dev_t dev;
+	ino_t ino;
 	char *buf;
 	off_t bufsiz;
 };
@@ -71,6 +73,18 @@ static void filefree(File *p) {
 	free(p);
 }
 
+static int filedevinocmp(File *a, File *b) {
+	if(a->dev < b->dev)
+		return -1;
+	if(a->dev > b->dev)
+		return 1;
+	if(a->ino < b->ino)
+		return -1;
+	if(a->ino > b->ino)
+		return 1;
+	return 0;
+}
+
 static int filesetsizecmp(const void *a, const void *b) {
 	if(((Node *)a)->size < ((Node *)b)->size)
 		return -1;
@@ -102,7 +116,7 @@ static void newaction(const void *nodep, const VISIT which, const int depth) {
 static void compareblock(Node *set) {
 	void *newroot;
 	Node *n, **v;
-	File *p, *q;
+	File *p, *q, **link;
 	ssize_t r;
 
 	if(set->size == 0) {
@@ -139,8 +153,13 @@ static void compareblock(Node *set) {
 			errx(1, "tsearch");
 		if(*v != n) {
 			free(n);
-			p->next = (*v)->head;
-			(*v)->head = p;
+			link = &(*v)->head; 
+			while(*link != NULL && filedevinocmp(p, *link) > 0)
+				link = &(*link)->next;
+			if(*link != NULL && filedevinocmp(p, *link) == 0)
+				errx(1, "same file");
+			p->next = *link;
+			*link = p;
 			(*v)->n++;
 		}
 	}
@@ -172,7 +191,7 @@ static void scan(char *dir) {
 	struct dirent *dp;
 	int dfd, len;
 	char *path;
-	File *file;
+	File *file, **p;
 	Node *set, **v;
 
 	len = strlen(dir);
@@ -204,6 +223,8 @@ static void scan(char *dir) {
 			file->name = path;
 			file->buf = NULL;
 			file->fd = -1;
+			file->dev = st.st_dev;
+			file->ino = st.st_ino;
 			file->next = NULL;
 
 			set = emalloc(sizeof *set);
@@ -216,8 +237,13 @@ static void scan(char *dir) {
 				errx(1, "tsearch");
 			if(*v != set) {
 				free(set);
-				file->next = (*v)->head;
-				(*v)->head = file;
+				p = &(*v)->head; 
+				while(*p != NULL && filedevinocmp(file, *p) > 0)
+					p = &(*p)->next;
+				if(*p != NULL && filedevinocmp(file, *p) == 0)
+					errx(1, "same file");
+				file->next = *p;
+				*p = file;
 				(*v)->n++;
 			}
 		}
