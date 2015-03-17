@@ -57,9 +57,7 @@ static ssize_t readn(int fd, void *av, size_t n) {
 }
 
 static void *emalloc(size_t n) {
-	void *p;
-
-	p = malloc(n);
+	void *p = malloc(n);
 	if(p == NULL)
 		err(1, "malloc");
 	return p;
@@ -92,88 +90,15 @@ static int filesetdatacmp(const void *a, const void *b) {
 	return memcmp(na->head->buf, nb->head->buf, na->head->bufsiz);
 }
 
-static void compareblock(Node *);
-
-static void newaction(const void *nodep, const VISIT which, const int depth) {
-	if(which == postorder || which == leaf) {
-		Node *set = *(Node **)nodep;
-		if(set->n > 1)
-			compareblock(set);
-		else
-			filefree(set->head);
-	}
-}
-
-static void compareblock(Node *set) {
-	void *newroot;
-	Node *n, **v;
-	File *p, *q, **link;
-	ssize_t r;
-
-	if(set->size == 0) {
-		while((p = set->head) != NULL) {
-			set->head = p->next;
-			puts(p->name);
-			filefree(p);
-		}
-		putchar('\n');
-		return;
-	}
-
-	for(p = set->head; p; p = p->next) {
-		p->bufsiz = set->size > blksize ? blksize : set->size;
-		r = readn(p->fd, p->buf, p->bufsiz);
-		if(r == -1)
-			err(1, "read");
-		if(r < p->bufsiz)
-			errx(1, "unexpected end of file: %s", p->name);
-	}
-
-	newroot = NULL;
-	for(p = set->head; p; p = q) {
-		q = p->next;
-		p->next = NULL;
-
-		n = emalloc(sizeof *n);
-		n->size = set->size - p->bufsiz;
-		n->head = p;
-		n->n = 1;
-
-		v = tsearch(n, &newroot, filesetdatacmp);
-		if(*v == NULL)
-			errx(1, "tsearch");
-		if(*v != n) {
-			free(n);
-			link = &(*v)->head; 
-			while(*link != NULL && filedevinocmp(p, *link) > 0)
-				link = &(*link)->next;
-			if(*link != NULL && filedevinocmp(p, *link) == 0)
-				errx(1, "same file");
-			p->next = *link;
-			*link = p;
-			(*v)->n++;
-		}
-	}
-	twalk(newroot, newaction);
-	tdestroy(newroot, free);
-}
-
-static void compare(Node *set) {
-	File **p;
-
-	/* Open all files. */
-	for(p = &set->head; *p; p = &(*p)->next) {
-		(*p)->fd = open((*p)->name, O_RDONLY);
-		if((*p)->fd == -1) {
-			warn("open: %s", (*p)->name);
-			free((*p)->name);
-			*p = (*p)->next;
-			continue;
-		}
-		(*p)->buf = emalloc(blksize);
-	}
-
-	compareblock(set);
+static void insert(File *file, Node *v) {
+	File **p = &v->head;
+	while(*p != NULL && filedevinocmp(file, *p) > 0)
+		p = &(*p)->next;
+	if(*p != NULL && filedevinocmp(file, *p) == 0)
+		errx(1, "same file");
+	file->next = *p;
+	*p = file;
+	v->n++;
 }
 
 static void scan(char *dir) {
@@ -181,7 +106,7 @@ static void scan(char *dir) {
 	struct stat st;
 	DIR *dirp;
 	struct dirent *dp;
-	File *file, **p;
+	File *file;
 	Node *set, **v;
 
 	dirp = opendir(dir);
@@ -226,19 +151,89 @@ static void scan(char *dir) {
 				errx(1, "tsearch");
 			if(*v != set) {
 				free(set);
-				p = &(*v)->head; 
-				while(*p != NULL && filedevinocmp(file, *p) > 0)
-					p = &(*p)->next;
-				if(*p != NULL && filedevinocmp(file, *p) == 0)
-					errx(1, "same file");
-				file->next = *p;
-				*p = file;
-				(*v)->n++;
+				insert(file, *v);
 			}
 		}
 	}
 
 	closedir(dirp);
+}
+
+static void compareblock(Node *);
+
+static void newaction(const void *nodep, const VISIT which, const int depth) {
+	if(which == postorder || which == leaf) {
+		Node *set = *(Node **)nodep;
+		if(set->n > 1)
+			compareblock(set);
+		else
+			filefree(set->head);
+	}
+}
+
+static void compareblock(Node *set) {
+	void *newroot;
+	Node *n, **v;
+	File *p, *q;
+	ssize_t r;
+
+	if(set->size == 0) {
+		while((p = set->head) != NULL) {
+			set->head = p->next;
+			puts(p->name);
+			filefree(p);
+		}
+		putchar('\n');
+		return;
+	}
+
+	for(p = set->head; p; p = p->next) {
+		p->bufsiz = set->size > blksize ? blksize : set->size;
+		r = readn(p->fd, p->buf, p->bufsiz);
+		if(r == -1)
+			err(1, "read");
+		if(r < p->bufsiz)
+			errx(1, "unexpected end of file: %s", p->name);
+	}
+
+	newroot = NULL;
+	for(p = set->head; p; p = q) {
+		q = p->next;
+		p->next = NULL;
+
+		n = emalloc(sizeof *n);
+		n->size = set->size - p->bufsiz;
+		n->head = p;
+		n->n = 1;
+
+		v = tsearch(n, &newroot, filesetdatacmp);
+		if(*v == NULL)
+			errx(1, "tsearch");
+		if(*v != n) {
+			free(n);
+			insert(p, *v);
+		}
+	}
+	twalk(newroot, newaction);
+	tdestroy(newroot, free);
+}
+
+static void compare(Node *set) {
+	File **p;
+
+	/* Open all files. */
+	for(p = &set->head; *p; p = &(*p)->next) {
+		(*p)->fd = open((*p)->name, O_RDONLY);
+		if((*p)->fd == -1) {
+			warn("open: %s", (*p)->name);
+			free((*p)->name);
+			*p = (*p)->next;
+			continue;
+		}
+		(*p)->buf = emalloc(blksize);
+	}
+
+	compareblock(set);
 }
 
 static void action(const void *nodep, const VISIT which, const int depth) {
