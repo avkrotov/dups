@@ -215,7 +215,6 @@ static void compareblock(Node *set) {
 		}
 	}
 	twalk(newroot, newaction);
-	tdestroy(newroot, free);
 }
 
 static void compare(Node *set) {
@@ -256,6 +255,5 @@ int main(int argc, char *argv[]) {
 		scan(*argv);
 
 	twalk(root, action);
-	tdestroy(root, free);
 	return 0;
 }
