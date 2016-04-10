@@ -177,22 +177,20 @@ static void compare(Node *set) {
 }
 
 static void scan(char *dir) {
+	char *path;
 	struct stat st;
 	DIR *dirp;
 	struct dirent *dp;
-	int dfd, len;
-	char *path;
 	File *file, **p;
 	Node *set, **v;
 
-	len = strlen(dir);
 	dirp = opendir(dir);
 	if(dirp == NULL) {
 		warn("opendir: %s", dir);
 		return;
 	}
 
-	dfd = dirfd(dirp);
+	int dfd = dirfd(dirp);
 	while((dp = readdir(dirp)) != NULL) {
 		if(dp->d_name[0] == '.' && (dp->d_name[1] == '\0' || (dp->d_name[1] == '.' && dp->d_name[2] == '\0')))
 			continue;
@@ -203,8 +201,8 @@ static void scan(char *dir) {
 		if(!S_ISDIR(st.st_mode) && !S_ISREG(st.st_mode))
 			continue;
 
-		path = emalloc(len + strlen(dp->d_name) + 2);
-		sprintf(path, "%s/%s", dir, dp->d_name);
+		if(asprintf(&path, "%s/%s", dir, dp->d_name) == -1)
+			err(1, "asprintf");
 
 		if(S_ISDIR(st.st_mode)) {
 			scan(path);
