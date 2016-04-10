@@ -6,6 +6,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <search.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -178,12 +179,16 @@ static void compareblock(Node *set) {
 	ssize_t r;
 
 	if(set->size == 0) {
+		static bool firstset = true;
+		if(!firstset)
+			putchar('\n');
+		else
+			firstset = false;
 		while((p = set->head) != NULL) {
 			set->head = p->next;
 			puts(p->name);
 			filefree(p);
 		}
-		putchar('\n');
 		return;
 	}
 
