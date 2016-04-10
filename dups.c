@@ -11,6 +11,8 @@
 #include <string.h>
 #include <unistd.h>
 
+#define CMP(a, b) (((a) > (b)) - ((a) < (b)))
+
 typedef struct File File;
 
 struct File {
@@ -74,23 +76,12 @@ static void filefree(File *p) {
 }
 
 static int filedevinocmp(File *a, File *b) {
-	if(a->dev < b->dev)
-		return -1;
-	if(a->dev > b->dev)
-		return 1;
-	if(a->ino < b->ino)
-		return -1;
-	if(a->ino > b->ino)
-		return 1;
-	return 0;
+	int res = CMP(a->dev, b->dev);
+	return res ? res : CMP(a->ino, b->ino);
 }
 
 static int filesetsizecmp(const void *a, const void *b) {
-	if(((Node *)a)->size < ((Node *)b)->size)
-		return -1;
-	if(((Node *)a)->size > ((Node *)b)->size)
-		return 1;
-	return 0;
+	return CMP(((Node *)a)->size, ((Node *)b)->size);
 }
 
 static int filesetdatacmp(const void *a, const void *b) {
